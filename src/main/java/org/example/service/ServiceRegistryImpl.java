@@ -4,6 +4,7 @@ import java.util.LinkedHashSet;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class ServiceRegistryImpl implements ServiceRegistry {
 
@@ -15,6 +16,8 @@ public class ServiceRegistryImpl implements ServiceRegistry {
 
     private final Random random = new Random();
 
+    private final ReentrantLock lock = new ReentrantLock();
+
     @Override
     public void register(String address) {
         if (address == null || address.isBlank()) {
@@ -23,7 +26,8 @@ public class ServiceRegistryImpl implements ServiceRegistry {
 
         address = address.trim();
 
-        synchronized (registrySet) {
+        lock.lock();
+        try {
             if (registrySet.size() == REGISTRY_CAPACITY) {
                 throw new IllegalStateException("Allowed limit is " + REGISTRY_CAPACITY + " for registry.");
             }
@@ -31,25 +35,37 @@ public class ServiceRegistryImpl implements ServiceRegistry {
             if (!registrySet.add(address)) {
                 throw new IllegalArgumentException("Same address can not be added to the registry.");
             }
+        } finally {
+            lock.unlock();
         }
+
     }
 
     @Override
     public String get() {
-        if (registrySet.isEmpty()) {
-            throw new IllegalStateException("Registry is empty.");
+        lock.lock();
+        try {
+            if (registrySet.isEmpty()) {
+                throw new IllegalStateException("Registry is empty.");
+            }
+            return getAt(Math.floorMod(counter.getAndIncrement(), registrySet.size()));
+        } finally {
+            lock.unlock();
         }
-
-        return getAt(Math.floorMod(counter.getAndIncrement(), registrySet.size()));
     }
 
     @Override
     public String getRandom() {
-        if (registrySet.isEmpty()) {
-            throw new IllegalStateException("Registry is empty.");
-        }
+        lock.lock();
+        try {
+            if (registrySet.isEmpty()) {
+                throw new IllegalStateException("Registry is empty.");
+            }
 
-        return getAt(random.nextInt(registrySet.size()));
+            return getAt(random.nextInt(registrySet.size()));
+        }finally {
+            lock.unlock();
+        }
     }
 
     private String getAt(int index) {
